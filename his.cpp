@@ -18,6 +18,33 @@ static std::string get_history_file(const std::string& home, const char* env_var
   return home + "/" + default_file;
 }
 
+static std::string get_fish_history_file(const std::string& home, const std::string& default_file) {
+      // Try to query fish_history from fish itself
+    std::string command = "fish -c 'echo $fish_history'";
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) return "";
+
+    char buffer[256];
+    std::string result;
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        result += buffer;
+    }
+    pclose(pipe);
+
+    // Clean up result
+    result.erase(result.find_last_not_of(" \n\r\t") + 1);
+
+    // Fall back to default if empty
+    if (result.empty()) {
+        result = home + "/.local/share/fish/" + default_file;
+    }else{
+      std::string hist_file = result + "_history";
+      result = home + "/.local/share/fish/" + hist_file;
+    }
+
+    return result;
+}
+
 His::His(const std::optional<bool> match,
     const std::optional<bool> icons) 
   : m_match(match.value()), m_icons(icons.value()) {
@@ -33,8 +60,13 @@ His::His(const std::optional<bool> match,
       throw std::runtime_error("SHELL environment variable is not set. Cannot determine current shell.");
     }else if(std::filesystem::path(shell).filename() == "bash"){
       his_comm = get_history_file(home, "HISTFILE", ".bash_history");
+      this->type = shell_type::bash;
     }else if(std::filesystem::path(shell).filename() == "zsh"){
       his_comm = get_history_file(home, "HISTFILE", ".zsh_history");
+      this->type = shell_type::zsh;
+    }else if(std::filesystem::path(shell).filename() == "fish"){
+      his_comm = get_fish_history_file(home, "fish_history");
+      this->type = shell_type::fish;
     }else{
       throw std::runtime_error("Your default SHELL is not supported.");
     }
@@ -210,8 +242,21 @@ std::vector<std::string> His::load_suggestions(const std::string& filename){
   std::vector<std::string> result = {};
   std::ifstream file(filename);
   std::string line = {};
+  bool is_fish = (this->type == shell_type::fish);
+
   while(std::getline(file, line)){
-    if(!line.empty()) result.push_back(line);
+    if(is_fish) {
+      // Only extract lines starting with "- cmd:"
+      const std::string prefix = "- cmd:";
+      if(line.compare(0, prefix.size(), prefix) == 0) {
+        std::string cmd = line.substr(prefix.size());
+        // Remove leading spaces
+        cmd.erase(0, cmd.find_first_not_of(" \t"));
+        if(!cmd.empty()) result.push_back(cmd);
+      }
+    } else {
+      if(!line.empty()) result.push_back(line);
+    }
   }
   return result;
 }

@@ -19,6 +19,13 @@
 #include <filesystem>
 #include <optional>
 
+  enum shell_type {
+    bash,
+    zsh,
+    fish,
+    unknown
+  };
+
 class His {
 
   std::string home, his_comm, command, input;
@@ -33,6 +40,8 @@ class His {
     const std::vector<std::string>& suggestions);
   static const std::function<std::string(const std::string&)> unicode;
   std::string set_prime(const std::string& prime_input);
+  
+  shell_type type = shell_type::unknown;
 
   public:
     His(const std::optional<bool> match = std::optional<bool>{false},
